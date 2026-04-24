@@ -4,7 +4,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
 
-  function renderParticipants(participants) {
+  function renderParticipants(participants, activityName) {
     if (!participants.length) {
       return `<p class="no-participants">No participants yet.</p>`;
     }
@@ -12,7 +12,12 @@ document.addEventListener("DOMContentLoaded", () => {
     return `
       <p><strong>Participants:</strong></p>
       <ul class="participants-list">
-        ${participants.map((participant) => `<li>${participant}</li>`).join("")}
+        ${participants.map((participant) => `
+          <li data-email="${participant}">
+            ${participant}
+            <span class="delete-participant" title="Unregister ${participant}">×</span>
+          </li>
+        `).join("")}
       </ul>
     `;
   }
@@ -20,7 +25,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Function to fetch activities from API
   async function fetchActivities() {
     try {
-      const response = await fetch("/activities");
+      const response = await fetch("/activities", { cache: 'no-cache' });
       const activities = await response.json();
 
       // Clear loading message
@@ -31,6 +36,7 @@ document.addEventListener("DOMContentLoaded", () => {
       Object.entries(activities).forEach(([name, details]) => {
         const activityCard = document.createElement("div");
         activityCard.className = "activity-card";
+        activityCard.dataset.activityName = name;
 
         const spotsLeft = details.max_participants - details.participants.length;
 
@@ -39,7 +45,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <p>${details.description}</p>
           <p><strong>Schedule:</strong> ${details.schedule}</p>
           <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
-          ${renderParticipants(details.participants)}
+          ${renderParticipants(details.participants, name)}
         `;
 
         activitiesList.appendChild(activityCard);
@@ -94,6 +100,50 @@ document.addEventListener("DOMContentLoaded", () => {
       messageDiv.className = "message error";
       messageDiv.classList.remove("hidden");
       console.error("Error signing up:", error);
+    }
+  });
+
+  // Handle participant deletion
+  document.addEventListener("click", async (event) => {
+    if (event.target.classList.contains("delete-participant")) {
+      event.preventDefault();
+
+      const li = event.target.closest("li");
+      const email = li.dataset.email;
+      const activityCard = event.target.closest(".activity-card");
+      const activityName = activityCard.dataset.activityName;
+
+      try {
+        const response = await fetch(
+          `/activities/${encodeURIComponent(activityName)}/participants?email=${encodeURIComponent(email)}`,
+          {
+            method: "DELETE",
+          }
+        );
+
+        const result = await response.json();
+
+        if (response.ok) {
+          messageDiv.textContent = result.message;
+          messageDiv.className = "message success";
+          fetchActivities();
+        } else {
+          messageDiv.textContent = result.detail || "An error occurred";
+          messageDiv.className = "message error";
+        }
+
+        messageDiv.classList.remove("hidden");
+
+        // Hide message after 5 seconds
+        setTimeout(() => {
+          messageDiv.classList.add("hidden");
+        }, 5000);
+      } catch (error) {
+        messageDiv.textContent = "Failed to unregister. Please try again.";
+        messageDiv.className = "message error";
+        messageDiv.classList.remove("hidden");
+        console.error("Error unregistering:", error);
+      }
     }
   });
 
